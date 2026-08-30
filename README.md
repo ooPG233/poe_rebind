@@ -1,4 +1,4 @@
-# poe-twitch-rebind
+# poe_rebind
 
 > [!WARNING]
 > **FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY — DISCLAIMER**
@@ -80,6 +80,12 @@ Options:
 - Step 4: link a new Twitch (OAuth: auth.twitch.tv/authorize)
 - Step 5: batch Twitch account rotation + result validation (Drops eligible)
 - PyInstaller packaging for release
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0 or
+later** ([GPL-3.0-or-later](LICENSE)). Any derivative work that is distributed
+must be released under the same license and with source code available.
 
 ## Known Issues & Fixes
 

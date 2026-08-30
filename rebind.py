@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 poe_rebind contributors
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. See the LICENSE file for details.
 """PoE Twitch rebind tool - Step 1: open the login page and pass Cloudflare.
 
 Stack: Python 3.13 + asyncio + nodriver (real Chrome via CDP).
