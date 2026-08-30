@@ -12,8 +12,10 @@ Goals:
   1. Launch a real Chrome (or Edge) and pass Cloudflare.
   2. Log into the PoE account (email + password).
   3. Unlink the old Twitch binding (twitch_remove).
-  4. Clear Twitch-domain storage, click connect (twitch_add) and stop
-     at the Twitch login form.
+  4. Clear Twitch-domain storage, click connect (twitch_add).
+  5. Log into Twitch with each account from twitch_accounts.txt, authorize
+     the OAuth prompt and verify the binding — looping until the list is
+     exhausted.
 """
 
 from __future__ import annotations
@@ -87,12 +89,18 @@ DEFAULT_POE_ENV = Path(__file__).resolve().parent / "poe.env"
 
 TWITCH_REMOVE_SEL = "button[value='twitch_remove']"
 TWITCH_ADD_SEL = "button[value='twitch_add']"
+TWITCH_USER_SEL = "#login-username"
+TWITCH_PASS_SEL = "#password-input"
+TWITCH_LOGIN_BTN_SEL = "button[data-a-target='passport-login-button']"
 
 TYPE_DELAY_MS = 90.0          # base delay for human-like typing
 LOGIN_WAIT_SECONDS = 45.0     # max wait for the PoE login redirect
 UNBIND_WAIT_SECONDS = 20.0    # max wait for twitch_remove to take effect
 TWITCH_LOGIN_WAIT_SECONDS = 30.0  # max wait for the Twitch login form
+AUTHORIZE_WAIT_SECONDS = 30.0     # max wait for the OAuth authorize/redirect
 CAPTCHA_DETECT_SECONDS = 8.0  # window to decide whether a login captcha exists
+
+DEFAULT_TWITCH_FILE = Path(__file__).resolve().parent / "twitch_accounts.txt"
 
 # Storage origins wiped before clicking connect, to prevent the residual
 # Twitch session from silently re-linking the OLD account.
@@ -102,6 +110,18 @@ TWITCH_COOKIE_ORIGINS = (
     "https://auth.twitch.tv",
     "https://id.twitch.tv",
     "https://passport.twitch.tv",
+)
+
+# Storage.clearDataForOrigin can miss domain-level cookies; delete the
+# known Twitch session cookies by name as well (auth-token IS the session).
+TWITCH_SESSION_COOKIES = (
+    "auth-token",
+    "login",
+    "persistent",
+    "unique_id",
+    "twilight-user",
+    "device_id",
+    "server_session_id",
 )
 # Avoid Edge account sync / inherited extensions and their post-install tabs.
 ISOLATION_BROWSER_ARGS = (
@@ -120,6 +140,12 @@ ISOLATION_BROWSER_ARGS = (
 @dataclass(slots=True)
 class PoeAccount:
     email: str
+    password: str
+
+
+@dataclass(slots=True)
+class TwitchAccount:
+    username: str
     password: str
 
 
@@ -199,6 +225,32 @@ def resolve_poe(args: argparse.Namespace) -> PoeAccount:
     if not email or not password:
         raise RebindError("缺少 PoE 账号: 请在 poe.env 或 CLI(--poe-email/--poe-password)中提供")
     return PoeAccount(email, password)
+
+
+def resolve_twitch_accounts(path: Path) -> list[TwitchAccount]:
+    """Parse twitch_accounts.txt: one `username:password` per line.
+
+    - The FIRST colon separates; everything after it is the password.
+    - Blank lines and lines starting with '#' are skipped.
+    """
+    if not path.exists():
+        raise RebindError(f"Twitch 账号文件不存在: {path}")
+    accounts: list[TwitchAccount] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(":")
+        if len(parts) < 2:
+            raise RebindError(f"{path.name} 第 {lineno} 行格式错误, 需要 username:password")
+        username = parts[0].strip()
+        password = ":".join(parts[1:]).strip()
+        if not username or not password:
+            raise RebindError(f"{path.name} 第 {lineno} 行用户名或密码为空")
+        accounts.append(TwitchAccount(username, password))
+    if not accounts:
+        raise RebindError(f"{path.name} 中没有可用账号")
+    return accounts
 
 
 # --- Cloudflare / page waiting ----------------------------------------------
@@ -309,7 +361,7 @@ JSON.stringify((() => ({
     hasPassword: !!document.querySelector('input[name=\\'login_password\\']'),
     hasRemove: !!document.querySelector('button[value=\\'twitch_remove\\']'),
     hasAdd: !!document.querySelector('button[value=\\'twitch_add\\']'),
-    bodyText: (document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').slice(0, 400),
+    bodyText: (document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').slice(0, 1200),
 }))())
 """
 
@@ -524,9 +576,20 @@ JSON.stringify((() => ({
     hasUser: !!document.querySelector('#login-username'),
     hasPass: !!document.querySelector('#password-input'),
     hasLoginBtn: !!document.querySelector('button[data-a-target=\\'passport-login-button\\']'),
+    authorizeBtn: (() => {
+        const b = Array.from(document.querySelectorAll('button')).find(
+            x => (x.innerText || '').trim().toLowerCase() === 'authorize'
+        );
+        if (!b) return null;
+        const r = b.getBoundingClientRect();
+        return {disabled: !!b.disabled,
+                x: Math.round(r.x), y: Math.round(r.y),
+                w: Math.round(r.width), h: Math.round(r.height)};
+    })(),
     hasAuthorize: !!Array.from(document.querySelectorAll('button')).find(
         b => (b.innerText || '').trim().toLowerCase() === 'authorize'
     ),
+    bodyText: (document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').slice(0, 300),
 }))())
 """
 
@@ -722,13 +785,29 @@ async def clear_twitch_cookies(tab: uc.Tab) -> None:
     from nodriver import cdp
 
     cleared = 0
+    deleted = 0
     for origin in TWITCH_COOKIE_ORIGINS:
         try:
             await tab.send(cdp.storage.clear_data_for_origin(origin, "all"))
             cleared += 1
         except Exception as exc:  # noqa: BLE001
             LOG.debug("清理 %s 失败: %s", origin, exc)
-    LOG.info("[4/4] 已清理 Twitch 域存储(cookies/localStorage): %d/%d 个源", cleared, len(TWITCH_COOKIE_ORIGINS))
+    # Storage.clearDataForOrigin can miss domain-level cookies — delete the
+    # known Twitch session cookies by name (auth-token IS the session).
+    try:
+        await tab.send(cdp.network.enable())
+    except Exception:
+        pass
+    for name in TWITCH_SESSION_COOKIES:
+        try:
+            await tab.send(cdp.network.delete_cookies(name=name, domain=".twitch.tv"))
+            deleted += 1
+        except Exception as exc:  # noqa: BLE001
+            LOG.debug("删除 cookie %s 失败: %s", name, exc)
+    LOG.info(
+        "[4/4] 已清理 Twitch 域: storage %d/%d 源, 会话 cookie %d/%d 个",
+        cleared, len(TWITCH_COOKIE_ORIGINS), deleted, len(TWITCH_SESSION_COOKIES),
+    )
 
 
 async def bind_new_twitch(tab: uc.Tab) -> dict:
@@ -748,6 +827,7 @@ async def bind_new_twitch(tab: uc.Tab) -> dict:
     LOG.info("[4/4] 已点击绑定 Twitch, 等待 Twitch 登录表单 ...")
 
     deadline = time.monotonic() + TWITCH_LOGIN_WAIT_SECONDS
+    started = time.monotonic()
     residue_handled = False
     while time.monotonic() < deadline:
         try:
@@ -773,9 +853,227 @@ async def bind_new_twitch(tab: uc.Tab) -> dict:
             residue_handled = True
             await clear_twitch_cookies(tab)
             await tab.reload()
+        elif (
+            _is_poe_url(url)
+            and "/my-account" in url
+            and time.monotonic() - started > 5.0
+            and not residue_handled
+        ):
+            # OAuth completed WITHOUT a login form: the residual Twitch
+            # session re-linked the OLD account silently. Wipe the session
+            # cookies by name, go back and click connect again.
+            LOG.warning("检测到 OAuth 未经登录直接完成(会话残留), 清理会话后重试 ...")
+            residue_handled = True
+            await clear_twitch_cookies(tab)
+            await tab.get("https://www.pathofexile.com/my-account/connections")
+            await asyncio.sleep(1.5)
+            retry_btn = await tab.select(TWITCH_ADD_SEL, timeout=10)
+            if retry_btn is not None:
+                await retry_btn.click()
 
         await asyncio.sleep(1.2)
-    raise RebindError(f"等待 Twitch 登录表单超时({TWITCH_LOGIN_WAIT_SECONDS:.0f}s)")
+    try:
+        diag = await twitch_login_state(tab)
+    except Exception:
+        diag = {}
+    raise RebindError(
+        f"等待 Twitch 登录表单超时({TWITCH_LOGIN_WAIT_SECONDS:.0f}s): "
+        f"url={diag.get('url')} body={str(diag.get('bodyText'))[:150]}"
+    )
+
+
+# --- Step 5: Twitch login + OAuth authorize + verify -------------------------
+
+
+async def twitch_login(tab: uc.Tab, account: TwitchAccount) -> None:
+    """Type the Twitch credentials into the login form and submit.
+
+    Handles both single-page (username+password together) and two-step
+    (username first, password field appears after submit) layouts.
+    """
+    LOG.info("[5/5] 输入 Twitch 账号 %s ...", account.username)
+    user_el = await tab.select(TWITCH_USER_SEL, timeout=TWITCH_LOGIN_WAIT_SECONDS)
+    if user_el is None:
+        raise RebindError(f"未出现 Twitch 用户名输入框({TWITCH_USER_SEL})")
+    await user_el.click()
+    await user_el.clear_input()
+    await human_type(user_el, account.username)
+
+    # Password may already be on the page, or appear after submitting username.
+    pass_el = await tab.select(TWITCH_PASS_SEL, timeout=3)
+    if pass_el is None:
+        btn = await tab.select(TWITCH_LOGIN_BTN_SEL, timeout=5)
+        if btn is not None:
+            await btn.click()
+        pass_el = await tab.select(TWITCH_PASS_SEL, timeout=10)
+    if pass_el is None:
+        raise RebindError(f"未出现 Twitch 密码输入框({TWITCH_PASS_SEL})")
+    await pass_el.click()
+    await pass_el.clear_input()
+    await human_type(pass_el, account.password)
+
+    btn = await tab.select(TWITCH_LOGIN_BTN_SEL, timeout=5)
+    if btn is None:
+        raise RebindError(f"未找到 Twitch 登录按钮({TWITCH_LOGIN_BTN_SEL})")
+    await btn.click()
+    LOG.info("[5/5] 已提交 Twitch 登录, 等待 OAuth 授权 ...")
+
+
+def _is_poe_url(url: str) -> bool:
+    """True only for real PoE page URLs.
+
+    The OAuth authorize URL contains the (double-encoded) redirect_uri
+    `www.pathofexile.com` as a QUERY PARAMETER — a plain substring check
+    would false-positive while still sitting on auth.twitch.tv.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        host = urlparse(url).hostname or ""
+    except ValueError:
+        return False
+    return host == "pathofexile.com" or host.endswith(".pathofexile.com")
+
+
+async def click_blank_area(tab: uc.Tab) -> None:
+    """Click an empty part of the page.
+
+    Twitch's consent page keeps the Authorize button disabled until the
+    page receives a real user gesture — a trusted CDP click on blank
+    space activates it.
+    """
+    try:
+        dims = await tab.evaluate(
+            "JSON.stringify({w: window.innerWidth, h: window.innerHeight})",
+            return_by_value=False,
+        )
+        d = json.loads(dims) if isinstance(dims, str) else {}
+        x = int(d.get("w") or 1200) * 20 // 100
+        y = int(d.get("h") or 800) * 30 // 100
+        await tab.mouse_click(x, y)
+        LOG.debug("blank click @(%s,%s)", x, y)
+    except Exception as exc:  # noqa: BLE001
+        LOG.debug("blank click 失败: %s", exc)
+
+
+async def authorize_and_verify(tab: uc.Tab, account: TwitchAccount) -> bool:
+    """Wait for the OAuth flow to finish and verify the binding on PoE.
+
+    Phase 1: on twitch.tv — click blank space to activate the Authorize
+    button (Twitch keeps it disabled until a user gesture), click it, and
+    wait for the redirect back to pathofexile.com; detect login errors.
+    Phase 2: on pathofexile.com — wait for the Twitch section to render
+    (twitch_remove present) and confirm the bound username in the page text.
+    """
+    deadline = time.monotonic() + AUTHORIZE_WAIT_SECONDS
+    authorize_clicked = False
+    while time.monotonic() < deadline:
+        try:
+            state = await twitch_login_state(tab)
+        except Exception:
+            await asyncio.sleep(1.0)
+            continue
+
+        url = str(state.get("url") or "")
+        body = str(state.get("bodyText") or "")
+
+        if _is_poe_url(url):
+            break  # real redirect back to PoE (not the query-param echo)
+
+        if "twitch.tv" in url and re.search(r"incorrect|log.?in failed|wrong password", body, re.I):
+            raise RebindError(f"Twitch 登录被拒绝(账号或密码错误): {account.username}")
+
+        if not authorize_clicked and state.get("hasAuthorize"):
+            authorize_clicked = True
+            LOG.info("[5/5] 点击页面空白处激活 Authorize 按钮 ...")
+            await click_blank_area(tab)
+            await asyncio.sleep(1.0)
+            LOG.info("[5/5] 点击 Authorize 授权 ...")
+            try:
+                btn = await tab.find("Authorize", best_match=True)
+                if btn is not None:
+                    await btn.click()
+                else:
+                    raise RuntimeError("find returned None")
+            except Exception:  # noqa: BLE001 — fallback to coordinate click
+                rect = state.get("authorizeBtn") or {}
+                if rect.get("w", 0) > 0:
+                    cx = rect["x"] + rect["w"] // 2
+                    cy = rect["y"] + rect["h"] // 2
+                    await tab.mouse_click(cx, cy)
+                else:
+                    await tab.evaluate(
+                        "(() => { const b = Array.from(document.querySelectorAll('button'))"
+                        ".find(x => (x.innerText || '').trim().toLowerCase() === 'authorize');"
+                        "if (b) { b.click(); return true; } return false; })()"
+                    )
+            await asyncio.sleep(2.0)
+
+        await asyncio.sleep(1.2)
+    else:
+        raise RebindError(f"等待 OAuth 授权/回跳超时({AUTHORIZE_WAIT_SECONDS:.0f}s)")
+
+    # Phase 2: verify the binding on the PoE side.
+    # The OAuth callback lands on /my-account/twitch, which does not show
+    # the linked username reliably — navigate to the connections page for
+    # a deterministic check (twitch_remove present + username in the text).
+    deadline = time.monotonic() + 20.0
+    while time.monotonic() < deadline:
+        try:
+            state = await poe_page_state(tab)
+        except Exception:
+            await asyncio.sleep(1.0)
+            continue
+        url = str(state.get("url") or "")
+        if _is_poe_url(url):
+            if "/my-account/connections" not in url:
+                await tab.get("https://www.pathofexile.com/my-account/connections")
+                await asyncio.sleep(1.5)
+                continue
+        else:
+            await asyncio.sleep(1.2)
+            continue
+        if state.get("hasRemove"):
+            body = str(state.get("bodyText") or "")
+            if account.username.lower() in body.lower():
+                LOG.info("[5/5] 绑定校验通过: %s 已连接", account.username)
+                return True
+            LOG.warning(
+                "[5/5] 已有绑定但页面文本中未找到 %s(可能绑定了其他账号)",
+                account.username,
+            )
+            return False
+        await asyncio.sleep(1.2)
+    raise RebindError("等待 PoE 绑定结果超时")
+
+
+async def ensure_poe_session(tab: uc.Tab, account: PoeAccount) -> None:
+    """Make sure the tab is on a logged-in PoE page.
+
+    - Anywhere other than the connections page (a foreign domain like
+      auth.twitch.tv after a failed account, or the /my-account/twitch
+      rewards page): navigate back to /my-account/connections.
+    - Bounced to /login (session lost): log into PoE again.
+    """
+    try:
+        state = await poe_page_state(tab)
+    except Exception:
+        return
+    url = str(state.get("url") or "")
+    if url and "/my-account/connections" not in url:
+        LOG.info("当前不在连接页(%s), 导航回 /my-account/connections ...", url[:60])
+        await tab.get("https://www.pathofexile.com/my-account/connections")
+        await asyncio.sleep(2.0)
+        try:
+            state = await poe_page_state(tab)
+        except Exception:
+            return
+        url = str(state.get("url") or "")
+    if "/login" in url:
+        LOG.info("PoE 会话失效, 重新登录 ...")
+        await tab.get(POE_LOGIN_URL)
+        await wait_login_page(tab)
+        await login_poe(tab, account)
 
 
 # --- Main flow --------------------------------------------------------------
@@ -800,6 +1098,7 @@ async def wait_browser_closed(browser: uc.Browser) -> None:
 async def run(args: argparse.Namespace) -> int:
     # Validate credentials BEFORE launching the browser.
     account = resolve_poe(args)
+    twitch_accounts = resolve_twitch_accounts(Path(args.twitch_file))
     chrome_path = find_chrome(args.chrome)
     LOG.info("启动浏览器: %s", chrome_path)
 
@@ -812,35 +1111,57 @@ async def run(args: argparse.Namespace) -> int:
         browser_executable_path=chrome_path,
         headless=False,
         # nodriver ships an English-only CF template; force English UI to match
-        browser_args=[*ISOLATION_BROWSER_ARGS, "--lang=en-US"],
+        browser_args=[*ISOLATION_BROWSER_ARGS, *browser_args],
     )
     browser = await uc.start(config=config)
 
     try:
         tab = await open_login_page(browser)
         await login_poe(tab, account)
-        await unbind_old_twitch(tab)
-        state = await bind_new_twitch(tab)
+
+        results: list[tuple[str, bool]] = []
+        total = len(twitch_accounts)
+        for index, twitch_account in enumerate(twitch_accounts, 1):
+            LOG.info("=" * 56)
+            LOG.info("[%d/%d] 绑定 Twitch 账号: %s", index, total, twitch_account.username)
+            try:
+                await ensure_poe_session(tab, account)
+                await unbind_old_twitch(tab)
+                await bind_new_twitch(tab)
+                await twitch_login(tab, twitch_account)
+                ok = await authorize_and_verify(tab, twitch_account)
+                results.append((twitch_account.username, ok))
+                LOG.info(
+                    "[%d/%d] %s → %s",
+                    index, total, twitch_account.username,
+                    "绑定成功" if ok else "已绑定但未确认",
+                )
+            except Exception as exc:  # noqa: BLE001 — keep the batch running
+                LOG.error(
+                    "[%d/%d] %s 失败: %s: %s",
+                    index, total, twitch_account.username, type(exc).__name__, exc,
+                )
+                results.append((twitch_account.username, False))
+
+        ok_count = sum(1 for _, ok in results if ok)
+
         if args.no_hold:
             shot = Path(args.screenshot) if args.screenshot else None
             if shot:
                 await tab.save_screenshot(str(shot))
                 LOG.info("已保存截图: %s", shot)
             browser.stop()
-            return 0
+            return 0 if ok_count == total else 1
         print()
         print("=" * 62)
-        print("[OK] 2-4 步完成: 已停在 Twitch 登录表单")
-        print(f"  Twitch URL  : {state.get('url')}")
-        print(f"  页面标题     : {state.get('title')}")
-        print(f"  账号输入框   : {state.get('hasUser')}")
-        print(f"  密码输入框   : {state.get('hasPass')}")
-        print(f"  登录按钮     : {state.get('hasLoginBtn')}")
+        print(f"[结果] 全部 {total} 个账号处理完成: {ok_count} 成功 / {total - ok_count} 失败")
+        for username, ok in results:
+            print(f"  {'[OK]  ' if ok else '[FAIL]'} {username}")
         print("=" * 62)
         print("浏览器保持打开, 手动查看/输入, 关闭浏览器窗口后脚本退出。")
 
         await wait_browser_closed(browser)
-        return 0
+        return 0 if ok_count == total else 1
     finally:
         try:
             browser.stop()
@@ -866,6 +1187,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--poe-env", default=str(DEFAULT_POE_ENV), help="配置文件路径(默认 poe.env)")
     parser.add_argument("--poe-email", help="PoE 账号邮箱(覆盖 poe.env)")
     parser.add_argument("--poe-password", help="PoE 密码(覆盖 poe.env)")
+    parser.add_argument("--twitch-file", default=str(DEFAULT_TWITCH_FILE), help="Twitch 账号列表文件(默认 twitch_accounts.txt)")
     parser.add_argument("--verbose", action="store_true", help="输出调试日志")
     parser.add_argument("--proxy", help="HTTP/SOCKS 代理(如 http://127.0.0.1:7890), 传给浏览器")
     parser.add_argument("--no-hold", action="store_true", help="到达登录页后直接退出(测试用)")

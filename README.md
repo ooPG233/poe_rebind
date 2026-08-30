@@ -37,6 +37,7 @@ tech stack recovered by reverse-engineering the original binary.
 poe_rebind/
 ├── rebind.py         # main program (single file, like the original)
 ├── poe.env           # PoE account config
+├── twitch_accounts.example.txt  # Twitch account list template
 ├── requirements.txt
 ├── pyproject.toml
 └── README.md
@@ -55,7 +56,7 @@ Verified (2026-08-30, Edge / Windows): under a full-page
 "Just a moment..." challenge, `verify_cf` template matching clicked the
 checkbox automatically and the login form appeared within ~10 seconds.
 
-## Current Progress — Steps 2-4 (Implemented)
+## Current Progress — Steps 2-5 (Implemented, verified end-to-end)
 
 1. Log into PoE with the credentials from `poe.env` (or `--poe-email` /
    `--poe-password`) — typed char-by-char with human-like delays.
@@ -66,6 +67,15 @@ checkbox automatically and the login form appeared within ~10 seconds.
    re-link the old account — an improvement over the original tool.
 4. Click connect (`button[value='twitch_add']`) and wait for the Twitch
    login form (`#login-username` / `#password-input`).
+5. For each account in `twitch_accounts.txt`: type the Twitch credentials
+   (human-like per-char delay), submit, click blank space to ACTIVATE the
+   Authorize button (Twitch keeps it disabled until a user gesture), click
+   Authorize, then verify the binding on the connections page (username
+   must appear next to twitch_remove). Loop until the list is exhausted,
+   re-unlinking the previous account on every iteration.
+
+Verified (2026-08-30): both test accounts rotated and verified
+(`绑定校验通过: <username> 已连接`), exit code 0.
 
 ### PoE login captcha findings
 
@@ -104,6 +114,20 @@ checkbox automatically and the login form appeared within ~10 seconds.
   re-submits after a real Turnstile token has been observed; never blindly.
 - Use `--proxy http://127.0.0.1:7890` to route the browser through your own
   proxy.
+
+### Session-residue hardening (Twitch)
+
+- `Storage.clearDataForOrigin` misses domain-level cookies: the script also
+  deletes the known Twitch session cookies BY NAME
+  (`auth-token`, `login`, ...) via `Network.deleteCookies` before clicking
+  connect — otherwise the residual session silently re-links the OLD
+  account.
+- If the OAuth flow completes WITHOUT showing a login form (residue), the
+  script detects the silent bounce back to PoE, wipes the session cookies
+  and clicks connect again.
+- The redirect-back detection uses URL HOST parsing, not substring: the
+  authorize URL contains the double-encoded `www.pathofexile.com` redirect
+  as a query parameter and would false-positive a substring check.
 
 ## Usage
 
