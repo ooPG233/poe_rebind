@@ -5,7 +5,7 @@
 # the terms of the GNU General Public License as published by the Free Software
 # Foundation, either version 3 of the License, or (at your option) any later
 # version. See the LICENSE file for details.
-"""PoE Twitch rebind tool - Step 1: open the login page and pass Cloudflare.
+"""PoE Twitch rebind tool - auto rebind Twitch accounts on the PoE account.
 
 Stack: Python 3.13 + asyncio + nodriver (real Chrome via CDP).
 Goals:
