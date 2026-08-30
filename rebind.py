@@ -81,6 +81,16 @@ COOKIE_CONTINUE_SEL = "button#onetrust-accept-btn-handler"
 
 DEFAULT_POE_ENV = Path(__file__).resolve().parent / "poe.env"
 
+# Avoid Edge account sync / inherited extensions and their post-install tabs.
+ISOLATION_BROWSER_ARGS = (
+    "--disable-extensions",
+    "--disable-component-extensions-with-background-pages",
+    "--disable-sync",
+    "--browser-signin=0",
+    "--no-first-run",
+    "--no-default-browser-check",
+)
+
 
 # --- Models -----------------------------------------------------------------
 
@@ -304,7 +314,7 @@ async def run(args: argparse.Namespace) -> int:
         browser_executable_path=chrome_path,
         headless=False,
         # nodriver ships an English-only CF template; force English UI to match
-        browser_args=["--lang=en-US"],
+        browser_args=[*ISOLATION_BROWSER_ARGS, "--lang=en-US"],
     )
     browser = await uc.start(config=config)
 
