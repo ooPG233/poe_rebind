@@ -1,0 +1,9 @@
+.venv/
+.uv-cache/
+.uv-python/
+__pycache__/
+*.pyc
+poe.env
+twitch_accounts.txt
+dist/
+build/

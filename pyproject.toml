@@ -1,0 +1,11 @@
+[project]
+name = "poe-twitch-rebind"
+version = "0.1.0"
+description = "PoE Twitch account auto-rebind tool (step 1: site login + Cloudflare bypass)"
+requires-python = ">=3.13"
+dependencies = [
+    "nodriver==0.50.3",
+    "websockets==17.1",
+    "mss==10.2.0",
+    "opencv-python-headless>=5.0",
+]
