@@ -55,6 +55,56 @@ Verified (2026-08-30, Edge / Windows): under a full-page
 "Just a moment..." challenge, `verify_cf` template matching clicked the
 checkbox automatically and the login form appeared within ~10 seconds.
 
+## Current Progress — Steps 2-4 (Implemented)
+
+1. Log into PoE with the credentials from `poe.env` (or `--poe-email` /
+   `--poe-password`) — typed char-by-char with human-like delays.
+2. Unlink the old Twitch binding (`button[value='twitch_remove']`), skipped
+   automatically when nothing is linked.
+3. Wipe Twitch-domain cookies/localStorage via CDP
+   (`Storage.clearDataForOrigin`) so the residual session cannot silently
+   re-link the old account — an improvement over the original tool.
+4. Click connect (`button[value='twitch_add']`) and wait for the Twitch
+   login form (`#login-username` / `#password-input`).
+
+### PoE login captcha findings
+
+- The "reCAPTCHA" on the PoE login form is actually **Cloudflare Turnstile
+  in `compat=recaptcha` mode** (`turnstile/v0/api.js?compat=recaptcha`).
+- The visual widget renders inside a **shadow root** — light-DOM iframe
+  selectors cannot see it. `solve_login_turnstile()` walks shadow roots to
+  locate the iframe, falling back to the `.sign-in__captcha` container rect,
+  then clicks the checkbox by viewport coordinates.
+- Precise clicking is vision-based: `locate_checkbox_visual()` screenshots
+  the viewport and finds the checkbox via Canny edge detection (the dark
+  theme border is too low-contrast for adaptive thresholding), restricted
+  to squares strictly inside the captcha container rect, taking the
+  leftmost candidate (before the label text and the Cloudflare logo).
+  Verified: vision located the checkbox at (492,579) vs the imprecise
+  container anchor (501,580) that only had a 6px margin inside the box.
+- **Captcha handling is gated on DOM signatures** (a captcha does not appear
+  on every login): first check for `.sign-in__captcha` / `.recaptcha`
+  containers, hidden `cf-turnstile-response` inputs, and the turnstile
+  script tag. Only when a signature exists does the solver enter the
+  shadow-DOM piercing + coordinate-click path; when no signature is found
+  the login submits directly. Login success is confirmed by rendered page
+  content (the Twitch add/remove button), never by the URL alone — a failed
+  login transiently flashes the target URL during the redirect chain.
+- Verified end-to-end (2026-08-30): checkbox click at the container anchor
+  produced an 837-char token, login succeeded, the old Twitch binding was
+  removed, Twitch storage was wiped, and the flow stopped at the Twitch
+  OAuth login form as designed.
+- **Network requirement**: on a flagged/datacenter exit IP the invisible
+  Turnstile silently refuses to issue a token (POST returns 302 but the
+  session is never established and the page bounces back with "Please
+  complete the reCAPTCHA"). A clean residential proxy is required — this is
+  exactly why the original tool's instructions say "自己弄好网络".
+- **Do not hammer the login**: repeated failed submissions escalate the IP
+  risk score at Cloudflare and make the token refusal worse. The script only
+  re-submits after a real Turnstile token has been observed; never blindly.
+- Use `--proxy http://127.0.0.1:7890` to route the browser through your own
+  proxy.
+
 ## Usage
 
 ```powershell
