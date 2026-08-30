@@ -1,5 +1,21 @@
 # poe-twitch-rebind
 
+> [!WARNING]
+> **FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY — DISCLAIMER**
+>
+> This project is intended solely for learning, research, and personal study
+> of browser automation and anti-bot techniques. It is **NOT** affiliated with,
+> endorsed by, or approved by Grinding Gear Games, Path of Exile, or Twitch.
+>
+> Using automated tools to interact with game websites and services may violate
+> their Terms of Service and may result in **permanent account bans or other
+> penalties**. The authors and contributors of this project assume **NO
+> responsibility and NO liability** for any account bans, suspensions, data
+> loss, or other consequences arising from the use or misuse of this software.
+>
+> Use at your own risk. You are solely responsible for your own accounts and
+> actions.
+
 Path of Exile × Twitch account auto-rebind tool. Rebuilt from scratch on the
 tech stack recovered by reverse-engineering the original binary.
 
