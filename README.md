@@ -146,3 +146,5 @@ must be released under the same license and with source code available.
   A safe patch (local socket reference) is applied at startup.
 - The CF Turnstile template is English-only: the browser launches with
   `--lang=en-US` so the widget language matches.
+- Browser isolation: disables extensions, sync and browser sign-in so Edge
+  never inherits the account or opens plugin post-install pages.
