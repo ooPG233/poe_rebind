@@ -139,13 +139,15 @@ uv pip install -r requirements.txt
 
 Options:
 
-``+--chrome <path>``      browser executable path
-``--poe-env <path>``     config file (default: poe.env)
-``--poe-email <email>``  PoE account email
-``--poe-password <pw>``  PoE password
-``--verbose``            debug logging
-``--no-hold``            exit right after reaching the login page (testing)
-``--screenshot <path>``  save a screenshot when using ``--no-hold``
+- `--chrome <path>` — browser executable path (auto-detects Chrome, then Edge)
+- `--poe-env <path>` — PoE config file (default: `poe.env`)
+- `--poe-email <email>` — PoE account email (overrides the config file)
+- `--poe-password <pw>` — PoE password (overrides the config file)
+- `--twitch-file <path>` — Twitch account list (default: `twitch_accounts.txt`)
+- `--verbose` — debug logging
+- `--proxy <url>` — HTTP/SOCKS proxy passed to the browser (e.g. `http://127.0.0.1:7890`)
+- `--no-hold` — exit right after the batch finishes instead of keeping the browser open (testing)
+- `--screenshot <path>` — save a final screenshot when using `--no-hold`
 
 ## Roadmap
 
