@@ -1,0 +1,51 @@
+name: Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v0.1.0)"
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller poe_rebind.spec --noconfirm
+
+      - name: Assemble release folder
+        shell: pwsh
+        run: |
+          Copy-Item 使用说明.txt   dist/poe_rebind/ -Force
+          Copy-Item USAGE.txt      dist/poe_rebind/ -Force
+          Copy-Item poe.env.example dist/poe_rebind/ -Force
+          Copy-Item twitch_accounts.example.txt dist/poe_rebind/ -Force
+          Copy-Item LICENSE        dist/poe_rebind/ -Force
+          Compress-Archive -Path dist/poe_rebind `
+            -DestinationPath "poe_rebind_${{ inputs.version }}_win64.zip" -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          files: poe_rebind_${{ inputs.version }}_win64.zip
+          generate_release_notes: true
