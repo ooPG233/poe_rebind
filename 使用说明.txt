@@ -1,0 +1,50 @@
+PoE × Twitch 换绑工具 使用说明
+================================
+
+免责声明
+--------
+本工具仅供学习和研究浏览器自动化技术使用，与 Grinding Gear Games
+(Path of Exile)、Twitch 无任何关联。使用自动化工具操作游戏网站可能
+违反其服务条款，导致账号永久封禁或其他处罚。开发者不承担任何因使用
+本工具而产生的账号封禁、数据丢失或其他后果的责任。使用风险自负。
+
+系统要求
+--------
+Windows 10/11 (64位)，已安装 Chrome 或 Edge 浏览器。
+无需安装 Python 或任何其他依赖。
+
+快速开始
+--------
+1. 解压到任意目录。
+
+2. 创建 PoE 账号配置（二选一）：
+   a) 复制 poe.env.example 重命名为 poe.env，用记事本打开，
+      填入你的 PoE 邮箱和密码，保存。启动后自动登录。
+   b) 不创建 poe.env，程序会打开浏览器到 PoE 登录页，
+      你自己在页面上输入账号密码登录（最长等待 10 分钟）。
+
+3. 复制 twitch_accounts.example.txt 重命名为 twitch_accounts.txt，
+   用记事本打开，每行填一个 Twitch 账号：
+       用户名:密码
+   例如：
+       mytwitch01:PassWord123
+       mytwitch02:An0ther_Pass!
+   冒号后面全部算密码（密码里可以包含冒号）。
+   空行和 # 开头的行会被忽略。
+
+4. 双击 poe_rebind.exe 运行。
+   程序会依次：登录 PoE → 解绑旧 Twitch → 绑定列表中的每个 Twitch 账号。
+
+可选参数
+--------
+  --chrome "路径"        指定浏览器路径（默认自动检测 Chrome/Edge）
+  --poe-env "路径"       指定 poe.env 路径（默认同目录 poe.env）
+  --twitch-file "路径"   指定 Twitch 账号文件路径（默认同目录）
+  --proxy http://IP:端口 设置代理
+  --verbose              输出调试日志
+
+文件说明
+--------
+  poe.env                    PoE 账号密码（可选，不创建则手动在浏览器登录）
+  twitch_accounts.txt        Twitch 账号列表（必填）
+  logs\rebind.log            运行日志

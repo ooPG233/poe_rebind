@@ -1,0 +1,12 @@
+[project]
+name = "poe_rebind"
+version = "0.1.0"
+description = "PoE Twitch account auto-rebind tool (login, unlink, link up to the Twitch login form)"
+requires-python = ">=3.13"
+license = { text = "GPL-3.0-or-later" }
+dependencies = [
+    "nodriver==0.50.3",
+    "websockets==17.1",
+    "mss==10.2.0",
+    "opencv-python-headless>=5.0",
+]

@@ -1,0 +1,19 @@
+# Twitch account list example
+# ---------------------------------------------------------------
+# Usage: copy this file to twitch_accounts.txt and replace the
+#        entries with your real accounts.
+#
+# Format: one account per line
+#     username:password
+#
+# Rules:
+#   1. The FIRST colon separates; everything after it is the password.
+#   2. Colons inside passwords are safe.
+#   3. Blank lines are skipped.
+#   4. Lines starting with # are skipped by this tool
+#      (the original binary did not support comments).
+# ---------------------------------------------------------------
+
+twitchuser01:MyPassword123
+twitchuser02:An0ther_Pass!
+twitchuser03:p@ss:word:99

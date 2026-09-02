@@ -1,0 +1,4 @@
+nodriver==0.50.3
+websockets==17.1
+mss==10.2.0
+opencv-python-headless>=5.0

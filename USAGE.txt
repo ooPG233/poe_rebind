@@ -1,0 +1,58 @@
+PoE x Twitch Rebind Tool - Usage Guide
+=======================================
+
+Disclaimer
+----------
+This tool is for educational and research purposes only. It is NOT
+affiliated with, endorsed by, or approved by Grinding Gear Games
+(Path of Exile) or Twitch. Using automated tools to interact with game
+websites may violate their Terms of Service and may result in permanent
+account bans or other penalties. The authors and contributors assume NO
+responsibility or liability for any account bans, suspensions, data loss,
+or other consequences arising from the use or misuse of this software.
+Use at your own risk.
+
+Requirements
+------------
+Windows 10/11 (64-bit) with Chrome or Edge installed.
+No Python or additional dependencies required.
+
+Quick Start
+-----------
+1. Extract to any folder.
+
+2. Set up your PoE credentials (choose one):
+   a) Copy poe.env.example, rename it to poe.env, open it with
+      Notepad, fill in your PoE email and password, save.
+      The tool will auto-login on launch.
+   b) Skip this step — the tool will open the PoE login page in
+      your browser and wait for you to log in manually
+      (up to 10 minutes).
+
+3. Copy twitch_accounts.example.txt and rename it to
+   twitch_accounts.txt. Open it with Notepad, one account per line:
+       username:password
+   Example:
+       mytwitch01:PassWord123
+       mytwitch02:An0ther_Pass!
+   Everything after the first colon is the password (colons inside
+   passwords are safe). Blank lines and lines starting with # are
+   ignored.
+
+4. Double-click poe_rebind.exe to run.
+   The tool will: log into PoE -> unlink old Twitch -> link each
+   Twitch account from the list.
+
+Optional Arguments
+------------------
+  --chrome "path"        Specify browser path (auto-detect by default)
+  --poe-env "path"       Path to poe.env (default: same directory)
+  --twitch-file "path"   Path to Twitch account list (default: same dir)
+  --proxy http://IP:port Set a proxy
+  --verbose              Enable debug logging
+
+Files
+-----
+  poe.env                    PoE credentials (optional; manual login if absent)
+  twitch_accounts.txt        Twitch account list (required)
+  logs\rebind.log            Runtime log
